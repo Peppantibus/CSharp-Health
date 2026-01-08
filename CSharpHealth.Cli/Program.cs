@@ -20,7 +20,7 @@ var scanner = new FileScanner();
 var files = scanner.FindCSharpFiles(path);
 
 var parser = new CSharpParser();
-var results = parser.ParseFiles(files);
+var results = parser.ParseFiles(files).ToList();
 
 var successCount = 0;
 var failedCount = 0;
@@ -44,3 +44,11 @@ Console.WriteLine($"total_files={files.Count}");
 Console.WriteLine($"parsed_successfully={successCount}");
 Console.WriteLine($"parsed_failed={failedCount}");
 Console.WriteLine($"error_diagnostics={errorDiagnostics}");
+
+var extractor = new CandidateExtractor();
+var candidates = extractor.ExtractMany(results);
+
+Console.WriteLine($"candidates_total={candidates.Count}");
+Console.WriteLine($"candidates_method={candidates.Count(candidate => candidate.Kind == CandidateKind.Method)}");
+Console.WriteLine($"candidates_lambda={candidates.Count(candidate => candidate.Kind == CandidateKind.Lambda)}");
+Console.WriteLine($"candidates_block={candidates.Count(candidate => candidate.Kind == CandidateKind.Block)}");
