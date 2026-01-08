@@ -5,7 +5,7 @@ using CSharpHealth.Core;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
-namespace CSharpHealth.Test
+namespace CSharpHealth.Tests // <-- match your test project namespace if needed
 {
     public class CandidateExtractorTests
     {
@@ -13,37 +13,37 @@ namespace CSharpHealth.Test
         public void ExtractMany_FindsMethodsLambdasAndBlocks()
         {
             var filePath = CreateTemporaryFile("Sample.cs", @"
-using System;
+            using System;
 
-namespace Sample
-{
-    public class Example
-    {
-        public void Run()
-        {
-            if (true)
+            namespace Sample
             {
-                Console.WriteLine("hi");
-            }
+                public class Example
+                {
+                    public void Run()
+                    {
+                        if (true)
+                        {
+                            Console.WriteLine(""hi"");
+                        }
 
-            try
-            {
-                Console.WriteLine("try");
-            }
-            catch (Exception)
-            {
-                Console.WriteLine("catch");
-            }
+                        try
+                        {
+                            Console.WriteLine(""try"");
+                        }
+                        catch (Exception)
+                        {
+                            Console.WriteLine(""catch"");
+                        }
 
-            Action<int> action = x => x + 1;
-            Func<int, int> func = (a) =>
-            {
-                return a + 2;
-            };
-        }
-    }
-}
-");
+                        Func<int, int> f1 = x => x + 1;
+                        Func<int, int> f2 = (a) =>
+                        {
+                            return a + 2;
+                        };
+                    }
+                }
+            }
+            ");
 
             var parser = new CSharpParser();
             var parseResults = parser.ParseFiles(new[] { filePath }).ToList();
@@ -53,21 +53,24 @@ namespace Sample
             {
                 var candidates = extractor.ExtractMany(parseResults);
 
-                Assert.Contains(candidates, candidate => candidate.Kind == CandidateKind.Method);
-                Assert.Contains(candidates, candidate => candidate.Kind == CandidateKind.Lambda);
+                Assert.Contains(candidates, c => c.Kind == CandidateKind.Method);
+                Assert.Contains(candidates, c => c.Kind == CandidateKind.Lambda);
 
-                var blockCandidates = candidates.Where(candidate => candidate.Kind == CandidateKind.Block).ToList();
-                Assert.Contains(blockCandidates, candidate => candidate.Node is BlockSyntax block
+                var blockCandidates = candidates.Where(c => c.Kind == CandidateKind.Block).ToList();
+
+                Assert.Contains(blockCandidates, c => c.Node is BlockSyntax block
                     && block.Parent is IfStatementSyntax);
-                Assert.Contains(blockCandidates, candidate => candidate.Node is BlockSyntax block
+
+                Assert.Contains(blockCandidates, c => c.Node is BlockSyntax block
                     && block.Parent is TryStatementSyntax);
-                Assert.Contains(blockCandidates, candidate => candidate.Node is BlockSyntax block
+
+                Assert.Contains(blockCandidates, c => c.Node is BlockSyntax block
                     && block.Parent is CatchClauseSyntax);
 
-                Assert.All(candidates, candidate =>
+                Assert.All(candidates, c =>
                 {
-                    Assert.True(candidate.StartLine > 0);
-                    Assert.True(candidate.EndLine >= candidate.StartLine);
+                    Assert.True(c.StartLine > 0);
+                    Assert.True(c.EndLine >= c.StartLine);
                 });
             }
             finally
@@ -80,17 +83,17 @@ namespace Sample
         public void ExtractMany_DoesNotIncludeMethodBodyBlocks()
         {
             var filePath = CreateTemporaryFile("BodyOnly.cs", @"
-namespace Sample
-{
-    public class Example
-    {
-        public void Run()
-        {
-            var value = 1;
-        }
-    }
-}
-");
+            namespace Sample
+            {
+                public class Example
+                {
+                    public void Run()
+                    {
+                        var value = 1;
+                    }
+                }
+            }
+            ");
 
             var parser = new CSharpParser();
             var parseResults = parser.ParseFiles(new[] { filePath }).ToList();
@@ -99,7 +102,7 @@ namespace Sample
             try
             {
                 var candidates = extractor.ExtractMany(parseResults);
-                var blockCandidates = candidates.Where(candidate => candidate.Kind == CandidateKind.Block).ToList();
+                var blockCandidates = candidates.Where(c => c.Kind == CandidateKind.Block).ToList();
 
                 Assert.Empty(blockCandidates);
             }
