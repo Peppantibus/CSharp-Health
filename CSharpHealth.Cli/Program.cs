@@ -65,3 +65,29 @@ Console.WriteLine($"normalized_total={normalizedCandidates.Count}");
 Console.WriteLine($"tokens_total={tokensTotal}");
 Console.WriteLine($"tokens_avg={tokensAverage:0.0}");
 Console.WriteLine($"tokens_max={tokensMax}");
+
+var signatureComputer = new SignatureComputer();
+var hashedCandidates = signatureComputer.ComputeMany(normalizedCandidates);
+var signatureGroups = hashedCandidates
+    .GroupBy(candidate => candidate.StrongSignatureHex, StringComparer.Ordinal)
+    .ToList();
+var duplicateGroups = signatureGroups.Where(group => group.Count() >= 2).ToList();
+var duplicateItems = duplicateGroups.Sum(group => group.Count());
+var maxGroupSize = duplicateGroups.Count > 0 ? duplicateGroups.Max(group => group.Count()) : 0;
+
+Console.WriteLine($"signatures_total={hashedCandidates.Count}");
+Console.WriteLine($"strong_duplicates_groups={duplicateGroups.Count}");
+Console.WriteLine($"strong_duplicates_items={duplicateItems}");
+Console.WriteLine($"strong_duplicates_max_group_size={maxGroupSize}");
+
+var topGroups = duplicateGroups
+    .Select(group => group.Count())
+    .OrderByDescending(size => size)
+    .ThenBy(size => size)
+    .Take(5)
+    .ToList();
+
+for (var i = 0; i < topGroups.Count; i++)
+{
+    Console.WriteLine($"strong_duplicates_top_{i + 1}_size={topGroups[i]}");
+}
