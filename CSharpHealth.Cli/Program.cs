@@ -1,3 +1,4 @@
+using System.Linq;
 using CSharpHealth.Core;
 
 if (args.Length != 2 || !string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase))
@@ -17,4 +18,29 @@ if (!Directory.Exists(path))
 
 var scanner = new FileScanner();
 var files = scanner.FindCSharpFiles(path);
-Console.WriteLine($"Found {files.Count} .cs files.");
+
+var parser = new CSharpParser();
+var results = parser.ParseFiles(files);
+
+var successCount = 0;
+var failedCount = 0;
+var errorDiagnostics = 0;
+
+foreach (var result in results)
+{
+    if (result.Success)
+    {
+        successCount++;
+    }
+    else
+    {
+        failedCount++;
+    }
+
+    errorDiagnostics += result.Diagnostics.Count(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+}
+
+Console.WriteLine($"total_files={files.Count}");
+Console.WriteLine($"parsed_successfully={successCount}");
+Console.WriteLine($"parsed_failed={failedCount}");
+Console.WriteLine($"error_diagnostics={errorDiagnostics}");
