@@ -20,4 +20,8 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\\CSharpHealth.Core\\CSharpHealth.Core.csproj" />
+  </ItemGroup>
+
 </Project>
