@@ -52,3 +52,20 @@ Console.WriteLine($"candidates_total={candidates.Count}");
 Console.WriteLine($"candidates_method={candidates.Count(candidate => candidate.Kind == CandidateKind.Method)}");
 Console.WriteLine($"candidates_lambda={candidates.Count(candidate => candidate.Kind == CandidateKind.Lambda)}");
 Console.WriteLine($"candidates_block={candidates.Count(candidate => candidate.Kind == CandidateKind.Block)}");
+
+var normalizer = new TokenNormalizer();
+var normalizedCandidates = normalizer.NormalizeMany(candidates);
+var tokensTotal = normalizedCandidates.Sum(candidate => candidate.TokenCount);
+var tokensMax = normalizedCandidates.Count > 0 ? normalizedCandidates.Max(candidate => candidate.TokenCount) : 0;
+var tokensAverage = normalizedCandidates.Count > 0
+    ? tokensTotal / (double)normalizedCandidates.Count
+    : 0;
+var tokensAverageRounded = Math.Round(tokensAverage, 1);
+var tokensAverageText = tokensAverageRounded % 1 == 0
+    ? tokensAverageRounded.ToString("0")
+    : tokensAverageRounded.ToString("0.0");
+
+Console.WriteLine($"normalized_total={normalizedCandidates.Count}");
+Console.WriteLine($"tokens_total={tokensTotal}");
+Console.WriteLine($"tokens_avg={tokensAverageText}");
+Console.WriteLine($"tokens_max={tokensMax}");
