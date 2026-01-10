@@ -24,7 +24,8 @@ namespace CSharpHealth.Core
                 .GroupBy(candidate => candidate.StrongSignatureHex, StringComparer.Ordinal)
                 .Where(group => group.Count() >= minGroupSize)
                 .Select(CreateGroup)
-                .OrderByDescending(group => group.GroupSize)
+                .OrderByDescending(group => group.Impact)
+                .ThenByDescending(group => group.GroupSize)
                 .ThenByDescending(group => group.TokenCount)
                 .ToList();
 
@@ -52,13 +53,15 @@ namespace CSharpHealth.Core
 
             var groupSize = occurrences.Count;
             var tokenCount = group.Max(candidate => candidate.TokenCount);
+            var impact = tokenCount * (groupSize - 1);
 
             return new DuplicateGroup(
                 group.Key,
                 100.0,
                 occurrences,
                 groupSize,
-                tokenCount);
+                tokenCount,
+                impact);
         }
     }
 }

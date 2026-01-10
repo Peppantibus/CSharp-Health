@@ -1,10 +1,11 @@
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CSharpHealth.Core;
 
 if (args.Length < 2 || !string.Equals(args[0], "scan", StringComparison.OrdinalIgnoreCase))
 {
-    Console.Error.WriteLine("Usage: scan <path> [--top <K>] [--min-group-size <N>] [--format <text|json>]");
+    Console.Error.WriteLine("Usage: scan <path> [--top <K>] [--min-group-size <N>] [--min-tokens <N>] [--min-lines <N>] [--kinds Method|Lambda|Block] [--preview-lines <N>] [--format <text|json>]");
     Environment.ExitCode = 1;
     return;
 }
@@ -19,7 +20,11 @@ if (!Directory.Exists(path))
 
 var top = 10;
 var minGroupSize = 2;
+var minTokens = 50;
+var minLines = 6;
+var previewLines = 3;
 var format = "text";
+HashSet<CandidateKind>? kindFilter = null;
 
 for (var i = 2; i < args.Length; i++)
 {
@@ -40,6 +45,54 @@ for (var i = 2; i < args.Length; i++)
             if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out minGroupSize) || minGroupSize <= 0)
             {
                 Console.Error.WriteLine("Error: --min-group-size expects a positive integer.");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            i++;
+            break;
+        case "--min-tokens":
+            if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out minTokens) || minTokens < 0)
+            {
+                Console.Error.WriteLine("Error: --min-tokens expects a non-negative integer.");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            i++;
+            break;
+        case "--min-lines":
+            if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out minLines) || minLines < 0)
+            {
+                Console.Error.WriteLine("Error: --min-lines expects a non-negative integer.");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            i++;
+            break;
+        case "--kinds":
+            if (i + 1 >= args.Length)
+            {
+                Console.Error.WriteLine("Error: --kinds expects a comma-separated list (Method,Lambda,Block).");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            kindFilter = ParseKinds(args[i + 1]);
+            if (kindFilter.Count == 0)
+            {
+                Console.Error.WriteLine("Error: --kinds expects a comma-separated list (Method,Lambda,Block).");
+                Environment.ExitCode = 1;
+                return;
+            }
+
+            i++;
+            break;
+        case "--preview-lines":
+            if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out previewLines) || previewLines < 0)
+            {
+                Console.Error.WriteLine("Error: --preview-lines expects a non-negative integer.");
                 Environment.ExitCode = 1;
                 return;
             }
@@ -100,14 +153,19 @@ var candidates = extractor.ExtractMany(results);
 
 var normalizer = new TokenNormalizer();
 var normalizedCandidates = normalizer.NormalizeMany(candidates);
-var tokensTotal = normalizedCandidates.Sum(candidate => candidate.TokenCount);
-var tokensMax = normalizedCandidates.Count > 0 ? normalizedCandidates.Max(candidate => candidate.TokenCount) : 0;
-var tokensAverage = normalizedCandidates.Count > 0
-    ? Math.Round(tokensTotal / (double)normalizedCandidates.Count, 1)
+var filteredCandidates = CandidateFilters.FilterNormalizedCandidates(
+    normalizedCandidates,
+    minTokens,
+    minLines,
+    kindFilter);
+var tokensTotal = filteredCandidates.Sum(candidate => candidate.TokenCount);
+var tokensMax = filteredCandidates.Count > 0 ? filteredCandidates.Max(candidate => candidate.TokenCount) : 0;
+var tokensAverage = filteredCandidates.Count > 0
+    ? Math.Round(tokensTotal / (double)filteredCandidates.Count, 1)
     : 0;
 
 var signatureComputer = new SignatureComputer();
-var hashedCandidates = signatureComputer.ComputeMany(normalizedCandidates);
+var hashedCandidates = signatureComputer.ComputeMany(filteredCandidates);
 var signatureGroups = hashedCandidates
     .GroupBy(candidate => candidate.StrongSignatureHex, StringComparer.Ordinal)
     .ToList();
@@ -123,10 +181,30 @@ if (format == "json")
 {
     var options = new JsonSerializerOptions
     {
-        WriteIndented = true
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    Console.WriteLine(JsonSerializer.Serialize(duplicateGroups, options));
+    var groupReports = duplicateGroups
+        .Select(group => new DuplicateGroupReport(
+            group.Signature,
+            group.SimilarityPercent,
+            group.GroupSize,
+            group.TokenCount,
+            group.Impact,
+            group.Occurrences
+                .Select(occurrence => new DuplicateOccurrenceReport(
+                    occurrence.CandidateKind.ToString(),
+                    occurrence.FilePath,
+                    occurrence.StartLine,
+                    occurrence.EndLine,
+                    previewLines > 0
+                        ? PreviewExtractor.GetPreviewLines(occurrence.FilePath, occurrence.StartLine, occurrence.EndLine, previewLines)
+                        : null))
+                .ToList()))
+        .ToList();
+
+    Console.WriteLine(JsonSerializer.Serialize(groupReports, options));
     return;
 }
 
@@ -134,11 +212,11 @@ Console.WriteLine($"total_files={files.Count}");
 Console.WriteLine($"parsed_successfully={successCount}");
 Console.WriteLine($"parsed_failed={failedCount}");
 Console.WriteLine($"error_diagnostics={errorDiagnostics}");
-Console.WriteLine($"candidates_total={candidates.Count}");
-Console.WriteLine($"candidates_method={candidates.Count(candidate => candidate.Kind == CandidateKind.Method)}");
-Console.WriteLine($"candidates_lambda={candidates.Count(candidate => candidate.Kind == CandidateKind.Lambda)}");
-Console.WriteLine($"candidates_block={candidates.Count(candidate => candidate.Kind == CandidateKind.Block)}");
-Console.WriteLine($"normalized_total={normalizedCandidates.Count}");
+Console.WriteLine($"candidates_total={filteredCandidates.Count}");
+Console.WriteLine($"candidates_method={filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Method)}");
+Console.WriteLine($"candidates_lambda={filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Lambda)}");
+Console.WriteLine($"candidates_block={filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Block)}");
+Console.WriteLine($"normalized_total={filteredCandidates.Count}");
 Console.WriteLine($"tokens_total={tokensTotal}");
 Console.WriteLine($"tokens_avg={tokensAverage:0.0}");
 Console.WriteLine($"tokens_max={tokensMax}");
@@ -156,9 +234,57 @@ var groupsToShow = duplicateGroups
 for (var i = 0; i < groupsToShow.Count; i++)
 {
     var group = groupsToShow[i];
-    Console.WriteLine($"[group {i + 1}] similarity={group.SimilarityPercent:0}% size={group.GroupSize} tokens={group.TokenCount}");
+    Console.WriteLine($"[group {i + 1}] similarity={group.SimilarityPercent:0}% size={group.GroupSize} tokens={group.TokenCount} impact={group.Impact}");
     foreach (var occurrence in group.Occurrences)
     {
         Console.WriteLine($"- {occurrence.CandidateKind} {occurrence.FilePath}:{occurrence.StartLine}-{occurrence.EndLine}");
+        if (previewLines > 0)
+        {
+            var preview = PreviewExtractor.GetPreviewLines(
+                occurrence.FilePath,
+                occurrence.StartLine,
+                occurrence.EndLine,
+                previewLines);
+
+            foreach (var line in preview)
+            {
+                Console.WriteLine($"  {line}");
+            }
+        }
     }
 }
+
+return;
+
+static HashSet<CandidateKind> ParseKinds(string rawKinds)
+{
+    var kinds = new HashSet<CandidateKind>();
+    var entries = rawKinds.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    foreach (var entry in entries)
+    {
+        if (!Enum.TryParse<CandidateKind>(entry, true, out var kind))
+        {
+            return new HashSet<CandidateKind>();
+        }
+
+        kinds.Add(kind);
+    }
+
+    return kinds;
+}
+
+internal sealed record DuplicateGroupReport(
+    string Signature,
+    double SimilarityPercent,
+    int GroupSize,
+    int TokenCount,
+    int Impact,
+    IReadOnlyList<DuplicateOccurrenceReport> Occurrences);
+
+internal sealed record DuplicateOccurrenceReport(
+    string Kind,
+    string FilePath,
+    int StartLine,
+    int EndLine,
+    IReadOnlyList<string>? PreviewLines);
