@@ -7,6 +7,7 @@ namespace CSharpHealth.Core
         double SimilarityPercent,
         IReadOnlyList<DuplicateOccurrence> Occurrences,
         int GroupSize,
-        int TokenCount
+        int TokenCount,
+        int Impact
     );
 }
