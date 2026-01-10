@@ -67,9 +67,10 @@ namespace CSharpHealth.Core
                 return set;
             }
 
+            var tokenArray = tokens as string[] ?? tokens.ToArray();
             for (var i = 0; i <= tokens.Count - n; i++)
             {
-                var ngram = string.Join(NgramSeparator, tokens, i, n);
+                var ngram = string.Join(NgramSeparator, tokenArray, i, n);
                 set.Add(ngram);
             }
 
