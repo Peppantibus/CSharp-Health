@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\\CSharpHealth.Core\\CSharpHealth.Core.csproj" />
+    <ProjectReference Include="..\\CSharpHealth.Cli\\CSharpHealth.Cli.csproj" />
   </ItemGroup>
 
 </Project>
