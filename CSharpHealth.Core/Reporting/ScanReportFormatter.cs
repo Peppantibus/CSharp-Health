@@ -1,3 +1,6 @@
+using System;
+using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,23 +23,27 @@ public static class ScanReportFormatter
     public static string FormatText(ScanReport report)
     {
         var builder = new StringBuilder();
-        AppendSummaryLines(builder, report.Summary);
+        var summary = report.Summary;
+        builder.AppendLine("CSharpHealth scan summary");
+        builder.AppendLine($"Files: total={summary.TotalFiles} parsed_ok={summary.ParsedSuccessfully} parsed_failed={summary.ParsedFailed} diagnostics={summary.ErrorDiagnostics}");
+        builder.AppendLine($"Candidates: total={summary.CandidatesTotal} methods={summary.CandidatesMethod} lambdas={summary.CandidatesLambda} blocks={summary.CandidatesBlock}");
+        builder.AppendLine($"Tokens: total={summary.TokensTotal} avg={summary.TokensAverage:0.0} max={summary.TokensMax}");
+        builder.AppendLine($"Signatures: total={summary.SignaturesTotal} strong_groups={summary.StrongDuplicatesGroups} strong_items={summary.StrongDuplicatesItems} strong_max_group={summary.StrongDuplicatesMaxGroupSize}");
+        builder.AppendLine($"Duplicates: groups={summary.DuplicateGroups} items={summary.DuplicateItems}");
 
-        for (var i = 0; i < report.Groups.Count; i++)
+        var topCount = Math.Min(3, report.Groups.Count);
+        if (topCount > 0)
         {
-            var group = report.Groups[i];
-            builder.AppendLine($"[group {i + 1}] similarity={group.SimilarityPercent:0}% size={group.GroupSize} tokens={group.TokenCount} impact={group.Impact}");
-            foreach (var occurrence in group.Occurrences)
+            builder.AppendLine("Top impacts:");
+            for (var i = 0; i < topCount; i++)
             {
-                builder.AppendLine($"- {occurrence.Kind} {occurrence.FilePath}:{occurrence.StartLine}-{occurrence.EndLine}");
-                if (occurrence.PreviewLines is not null)
-                {
-                    foreach (var line in occurrence.PreviewLines)
-                    {
-                        builder.AppendLine($"  {line}");
-                    }
-                }
+                var group = report.Groups[i];
+                builder.AppendLine($"{i + 1}) impact={group.Impact} size={group.GroupSize} tokens={group.TokenCount} similarity={group.SimilarityPercent:0}%");
             }
+        }
+        else
+        {
+            builder.AppendLine("Top impacts: none");
         }
 
         return builder.ToString();
@@ -45,11 +52,28 @@ public static class ScanReportFormatter
     public static string FormatMarkdown(ScanReport report)
     {
         var builder = new StringBuilder();
+        var summary = report.Summary;
         builder.AppendLine("# CSharpHealth Report");
+        builder.AppendLine();
+        builder.AppendLine("## Key findings");
+        builder.AppendLine();
+        builder.AppendLine($"- Files scanned: {summary.TotalFiles} (parsed ok {summary.ParsedSuccessfully}, failed {summary.ParsedFailed}, diagnostics {summary.ErrorDiagnostics})");
+        builder.AppendLine($"- Duplicate groups: {summary.DuplicateGroups} (items {summary.DuplicateItems}); strong groups {summary.StrongDuplicatesGroups} (items {summary.StrongDuplicatesItems})");
+        if (report.Groups.Count > 0)
+        {
+            var topGroup = report.Groups[0];
+            builder.AppendLine($"- Highest impact group: impact {topGroup.Impact} (size {topGroup.GroupSize}, tokens {topGroup.TokenCount}, similarity {topGroup.SimilarityPercent:0}%)");
+        }
+        else
+        {
+            builder.AppendLine("- Highest impact group: none");
+        }
+
+        builder.AppendLine("- Impact measures duplicated volume: token_count × (group_size − 1).");
         builder.AppendLine();
         builder.AppendLine("## Summary");
         builder.AppendLine();
-        AppendSummaryMarkdown(builder, report.Summary);
+        AppendSummaryMarkdown(builder, summary);
         builder.AppendLine();
         builder.AppendLine("## Top Duplicate Groups");
         builder.AppendLine();
@@ -74,7 +98,7 @@ public static class ScanReportFormatter
             builder.AppendLine($"- Similarity: {group.SimilarityPercent:0}%");
             builder.AppendLine($"- Size: {group.GroupSize}");
             builder.AppendLine($"- Token count: {group.TokenCount}");
-            builder.AppendLine($"- Impact: {group.Impact}");
+            builder.AppendLine($"- Impact: {group.Impact} (token_count × (group_size − 1))");
             builder.AppendLine($"- Signature: `{group.Signature}`");
             builder.AppendLine();
             builder.AppendLine("Occurrences:");
@@ -83,46 +107,29 @@ public static class ScanReportFormatter
             for (var j = 0; j < group.Occurrences.Count; j++)
             {
                 var occurrence = group.Occurrences[j];
-                builder.AppendLine($"{j + 1}. `{occurrence.Kind} {occurrence.FilePath}:{occurrence.StartLine}-{occurrence.EndLine}`");
-                if (occurrence.PreviewLines is not null)
-                {
-                    builder.AppendLine();
-                    builder.AppendLine("```csharp");
-                    foreach (var line in occurrence.PreviewLines)
-                    {
-                        builder.AppendLine(line);
-                    }
+                var relativePath = GetRelativePath(occurrence.FilePath);
+                builder.AppendLine($"{j + 1}. `{occurrence.Kind} {relativePath}:{occurrence.StartLine}-{occurrence.EndLine}`");
+            }
 
-                    builder.AppendLine("```");
+            var previewOccurrence = group.Occurrences.FirstOrDefault(occurrence => occurrence.PreviewLines is { Count: > 0 });
+            if (previewOccurrence?.PreviewLines is not null)
+            {
+                builder.AppendLine();
+                builder.AppendLine("Preview (sample):");
+                builder.AppendLine();
+                builder.AppendLine("```csharp");
+                foreach (var line in previewOccurrence.PreviewLines)
+                {
+                    builder.AppendLine(line);
                 }
 
-                builder.AppendLine();
+                builder.AppendLine("```");
             }
+
+            builder.AppendLine();
         }
 
         return builder.ToString();
-    }
-
-    private static void AppendSummaryLines(StringBuilder builder, ScanSummary summary)
-    {
-        builder.AppendLine($"total_files={summary.TotalFiles}");
-        builder.AppendLine($"parsed_successfully={summary.ParsedSuccessfully}");
-        builder.AppendLine($"parsed_failed={summary.ParsedFailed}");
-        builder.AppendLine($"error_diagnostics={summary.ErrorDiagnostics}");
-        builder.AppendLine($"candidates_total={summary.CandidatesTotal}");
-        builder.AppendLine($"candidates_method={summary.CandidatesMethod}");
-        builder.AppendLine($"candidates_lambda={summary.CandidatesLambda}");
-        builder.AppendLine($"candidates_block={summary.CandidatesBlock}");
-        builder.AppendLine($"normalized_total={summary.NormalizedTotal}");
-        builder.AppendLine($"tokens_total={summary.TokensTotal}");
-        builder.AppendLine($"tokens_avg={summary.TokensAverage:0.0}");
-        builder.AppendLine($"tokens_max={summary.TokensMax}");
-        builder.AppendLine($"signatures_total={summary.SignaturesTotal}");
-        builder.AppendLine($"strong_duplicates_groups={summary.StrongDuplicatesGroups}");
-        builder.AppendLine($"strong_duplicates_items={summary.StrongDuplicatesItems}");
-        builder.AppendLine($"strong_duplicates_max_group_size={summary.StrongDuplicatesMaxGroupSize}");
-        builder.AppendLine($"duplicates_groups={summary.DuplicateGroups}");
-        builder.AppendLine($"duplicates_items={summary.DuplicateItems}");
     }
 
     private static void AppendSummaryMarkdown(StringBuilder builder, ScanSummary summary)
@@ -141,5 +148,24 @@ public static class ScanReportFormatter
         builder.AppendLine($"- Strong duplicates groups/items: {summary.StrongDuplicatesGroups}/{summary.StrongDuplicatesItems}");
         builder.AppendLine($"- Strong duplicates max group size: {summary.StrongDuplicatesMaxGroupSize}");
         builder.AppendLine($"- Duplicate groups/items: {summary.DuplicateGroups}/{summary.DuplicateItems}");
+    }
+
+    private static string GetRelativePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return path;
+        }
+
+        try
+        {
+            var currentDirectory = Environment.CurrentDirectory;
+            var relativePath = Path.GetRelativePath(currentDirectory, path);
+            return string.IsNullOrWhiteSpace(relativePath) ? path : relativePath;
+        }
+        catch (ArgumentException)
+        {
+            return path;
+        }
     }
 }
