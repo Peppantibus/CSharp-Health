@@ -20,6 +20,7 @@ variables or changed literals) to improve code health and reduce repetition.
   - Normalize literals
 - Group duplicates with similarity score
 - CLI output in text, JSON, or Markdown
+- Desktop UI for Windows (WPF) with folder/file/GitHub repo selection
 
 ## Solution Structure
 
@@ -27,7 +28,8 @@ variables or changed literals) to improve code health and reduce repetition.
 CSharpHealth.sln
 ├─ CSharpHealth.Core  # Analysis engine
 ├─ CSharpHealth.Cli   # Command-line interface
-└─ CSharpHealth.Tests # Unit tests
+├─ CSharpHealth.Desktop # Windows desktop UI (WPF)
+└─ CSharpHealth.Tests    # Unit tests
 ```
 
 ## Build & Test
@@ -77,6 +79,18 @@ Force a specific format when writing to a file:
 
 ```bash
 dotnet run --project CSharpHealth.Cli -- scan ./MyRepo --out ./reports/report.txt --format text
+```
+
+## Desktop UI (Windows)
+
+The WPF desktop app provides a clean, single-purpose UI to select a local
+folder, a single C# file, or a GitHub repository and run a scan with minimal
+options.
+
+Run the desktop app from the solution root:
+
+```bash
+dotnet run --project CSharpHealth.Desktop
 ```
 
 ## Impact Ranking
