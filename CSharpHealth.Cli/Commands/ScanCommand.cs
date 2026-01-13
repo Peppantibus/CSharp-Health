@@ -1,13 +1,6 @@
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using CSharpHealth.Core.Candidates;
-using CSharpHealth.Core.Duplicates;
-using CSharpHealth.Core.Normalization;
-using CSharpHealth.Core.Parsing;
 using CSharpHealth.Core.Reporting;
 using CSharpHealth.Core.Scanning;
-using CSharpHealth.Core.Similarity;
 
 namespace CSharpHealth.Cli.Commands;
 
@@ -148,9 +141,9 @@ internal static class ScanCommand
         var report = BuildReport(path, top, minGroupSize, minTokens, minLines, previewLines, kindFilter);
         var output = format switch
         {
-            "json" => SerializeJson(report.JsonGroups),
-            "markdown" => FormatMarkdown(report.Report),
-            _ => FormatText(report.Report)
+            "json" => ScanReportFormatter.SerializeJson(report.AllGroups),
+            "markdown" => ScanReportFormatter.FormatMarkdown(report.Report),
+            _ => ScanReportFormatter.FormatText(report.Report)
         };
 
         stdout.Write(output);
@@ -177,7 +170,7 @@ internal static class ScanCommand
         return 0;
     }
 
-    private static (ScanReport Report, IReadOnlyList<DuplicateGroupReport> JsonGroups) BuildReport(
+    private static ScanReportResult BuildReport(
         string path,
         int top,
         int minGroupSize,
@@ -188,243 +181,9 @@ internal static class ScanCommand
     {
         var scanner = new FileScanner();
         var files = scanner.FindCSharpFiles(path);
-
-        var parser = new CSharpParser();
-        var results = parser.ParseFiles(files).ToList();
-
-        var successCount = 0;
-        var failedCount = 0;
-        var errorDiagnostics = 0;
-
-        foreach (var result in results)
-        {
-            if (result.Success)
-            {
-                successCount++;
-            }
-            else
-            {
-                failedCount++;
-            }
-
-            errorDiagnostics += result.Diagnostics.Count(diagnostic => diagnostic.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
-        }
-
-        var extractor = new CandidateExtractor();
-        var candidates = extractor.ExtractMany(results);
-
-        var normalizer = new TokenNormalizer();
-        var normalizedCandidates = normalizer.NormalizeMany(candidates);
-        var filteredCandidates = CandidateFilters.FilterNormalizedCandidates(
-            normalizedCandidates,
-            minTokens,
-            minLines,
-            kindFilter);
-        var tokensTotal = filteredCandidates.Sum(candidate => candidate.TokenCount);
-        var tokensMax = filteredCandidates.Count > 0 ? filteredCandidates.Max(candidate => candidate.TokenCount) : 0;
-        var tokensAverage = filteredCandidates.Count > 0
-            ? Math.Round(tokensTotal / (double)filteredCandidates.Count, 1)
-            : 0;
-
-        var signatureComputer = new SignatureComputer();
-        var hashedCandidates = signatureComputer.ComputeMany(filteredCandidates);
-        var signatureGroups = hashedCandidates
-            .GroupBy(candidate => candidate.StrongSignatureHex, StringComparer.Ordinal)
-            .ToList();
-        var strongDuplicateGroups = signatureGroups.Where(group => group.Count() >= 2).ToList();
-        var strongDuplicateItems = strongDuplicateGroups.Sum(group => group.Count());
-        var maxGroupSize = strongDuplicateGroups.Count > 0 ? strongDuplicateGroups.Max(group => group.Count()) : 0;
-
-        var grouper = new DuplicateGrouper();
-        var duplicateGroups = grouper.GroupStrongDuplicates(hashedCandidates, minGroupSize);
-        var duplicateItems = duplicateGroups.Sum(group => group.GroupSize);
-
-        var summary = new ScanSummary(
-            files.Count,
-            successCount,
-            failedCount,
-            errorDiagnostics,
-            filteredCandidates.Count,
-            filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Method),
-            filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Lambda),
-            filteredCandidates.Count(candidate => candidate.Candidate.Kind == CandidateKind.Block),
-            filteredCandidates.Count,
-            tokensTotal,
-            tokensAverage,
-            tokensMax,
-            hashedCandidates.Count,
-            strongDuplicateGroups.Count,
-            strongDuplicateItems,
-            maxGroupSize,
-            duplicateGroups.Count,
-            duplicateItems);
-
-        var topGroups = duplicateGroups.Take(top).ToList();
-        var reportGroups = BuildGroupReports(topGroups, previewLines);
-        var jsonGroups = BuildGroupReports(duplicateGroups, previewLines);
-
-        return (new ScanReport(summary, reportGroups), jsonGroups);
-    }
-
-    private static IReadOnlyList<DuplicateGroupReport> BuildGroupReports(
-        IReadOnlyList<DuplicateGroup> groups,
-        int previewLines)
-    {
-        return groups
-            .Select(group => new DuplicateGroupReport(
-                group.Signature,
-                group.SimilarityPercent,
-                group.GroupSize,
-                group.TokenCount,
-                group.Impact,
-                group.Occurrences
-                    .Select(occurrence => new DuplicateOccurrenceReport(
-                        occurrence.CandidateKind.ToString(),
-                        occurrence.FilePath,
-                        occurrence.StartLine,
-                        occurrence.EndLine,
-                        previewLines > 0
-                            ? PreviewExtractor.GetPreviewLines(occurrence.FilePath, occurrence.StartLine, occurrence.EndLine, previewLines)
-                            : null))
-                    .ToList()))
-            .ToList();
-    }
-
-    private static string SerializeJson(IReadOnlyList<DuplicateGroupReport> groups)
-    {
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-
-        return JsonSerializer.Serialize(groups, options);
-    }
-
-    private static string FormatText(ScanReport report)
-    {
-        var builder = new StringBuilder();
-        AppendSummaryLines(builder, report.Summary);
-
-        for (var i = 0; i < report.Groups.Count; i++)
-        {
-            var group = report.Groups[i];
-            builder.AppendLine($"[group {i + 1}] similarity={group.SimilarityPercent:0}% size={group.GroupSize} tokens={group.TokenCount} impact={group.Impact}");
-            foreach (var occurrence in group.Occurrences)
-            {
-                builder.AppendLine($"- {occurrence.Kind} {occurrence.FilePath}:{occurrence.StartLine}-{occurrence.EndLine}");
-                if (occurrence.PreviewLines is not null)
-                {
-                    foreach (var line in occurrence.PreviewLines)
-                    {
-                        builder.AppendLine($"  {line}");
-                    }
-                }
-            }
-        }
-
-        return builder.ToString();
-    }
-
-    private static string FormatMarkdown(ScanReport report)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine("# CSharpHealth Report");
-        builder.AppendLine();
-        builder.AppendLine("## Summary");
-        builder.AppendLine();
-        AppendSummaryMarkdown(builder, report.Summary);
-        builder.AppendLine();
-        builder.AppendLine("## Top Duplicate Groups");
-        builder.AppendLine();
-        builder.AppendLine("| # | Size | Token Count | Impact | Similarity |");
-        builder.AppendLine("| - | ---- | ----------- | ------ | ---------- |");
-        for (var i = 0; i < report.Groups.Count; i++)
-        {
-            var group = report.Groups[i];
-            builder.AppendLine($"| {i + 1} | {group.GroupSize} | {group.TokenCount} | {group.Impact} | {group.SimilarityPercent:0}% |");
-        }
-
-        if (report.Groups.Count > 0)
-        {
-            builder.AppendLine();
-        }
-
-        for (var i = 0; i < report.Groups.Count; i++)
-        {
-            var group = report.Groups[i];
-            builder.AppendLine($"### Group {i + 1}");
-            builder.AppendLine();
-            builder.AppendLine($"- Similarity: {group.SimilarityPercent:0}%");
-            builder.AppendLine($"- Size: {group.GroupSize}");
-            builder.AppendLine($"- Token count: {group.TokenCount}");
-            builder.AppendLine($"- Impact: {group.Impact}");
-            builder.AppendLine($"- Signature: `{group.Signature}`");
-            builder.AppendLine();
-            builder.AppendLine("Occurrences:");
-            builder.AppendLine();
-
-            for (var j = 0; j < group.Occurrences.Count; j++)
-            {
-                var occurrence = group.Occurrences[j];
-                builder.AppendLine($"{j + 1}. `{occurrence.Kind} {occurrence.FilePath}:{occurrence.StartLine}-{occurrence.EndLine}`");
-                if (occurrence.PreviewLines is not null)
-                {
-                    builder.AppendLine();
-                    builder.AppendLine("```csharp");
-                    foreach (var line in occurrence.PreviewLines)
-                    {
-                        builder.AppendLine(line);
-                    }
-
-                    builder.AppendLine("```");
-                }
-
-                builder.AppendLine();
-            }
-        }
-
-        return builder.ToString();
-    }
-
-    private static void AppendSummaryLines(StringBuilder builder, ScanSummary summary)
-    {
-        builder.AppendLine($"total_files={summary.TotalFiles}");
-        builder.AppendLine($"parsed_successfully={summary.ParsedSuccessfully}");
-        builder.AppendLine($"parsed_failed={summary.ParsedFailed}");
-        builder.AppendLine($"error_diagnostics={summary.ErrorDiagnostics}");
-        builder.AppendLine($"candidates_total={summary.CandidatesTotal}");
-        builder.AppendLine($"candidates_method={summary.CandidatesMethod}");
-        builder.AppendLine($"candidates_lambda={summary.CandidatesLambda}");
-        builder.AppendLine($"candidates_block={summary.CandidatesBlock}");
-        builder.AppendLine($"normalized_total={summary.NormalizedTotal}");
-        builder.AppendLine($"tokens_total={summary.TokensTotal}");
-        builder.AppendLine($"tokens_avg={summary.TokensAverage:0.0}");
-        builder.AppendLine($"tokens_max={summary.TokensMax}");
-        builder.AppendLine($"signatures_total={summary.SignaturesTotal}");
-        builder.AppendLine($"strong_duplicates_groups={summary.StrongDuplicatesGroups}");
-        builder.AppendLine($"strong_duplicates_items={summary.StrongDuplicatesItems}");
-        builder.AppendLine($"strong_duplicates_max_group_size={summary.StrongDuplicatesMaxGroupSize}");
-        builder.AppendLine($"duplicates_groups={summary.DuplicateGroups}");
-        builder.AppendLine($"duplicates_items={summary.DuplicateItems}");
-    }
-
-    private static void AppendSummaryMarkdown(StringBuilder builder, ScanSummary summary)
-    {
-        builder.AppendLine($"- Total files: {summary.TotalFiles}");
-        builder.AppendLine($"- Parsed successfully: {summary.ParsedSuccessfully}");
-        builder.AppendLine($"- Parsed failed: {summary.ParsedFailed}");
-        builder.AppendLine($"- Error diagnostics: {summary.ErrorDiagnostics}");
-        builder.AppendLine($"- Candidates total: {summary.CandidatesTotal}");
-        builder.AppendLine($"- Candidates by kind: {summary.CandidatesMethod} methods, {summary.CandidatesLambda} lambdas, {summary.CandidatesBlock} blocks");
-        builder.AppendLine($"- Normalized total: {summary.NormalizedTotal}");
-        builder.AppendLine($"- Tokens total: {summary.TokensTotal}");
-        builder.AppendLine($"- Tokens avg: {summary.TokensAverage:0.0}");
-        builder.AppendLine($"- Tokens max: {summary.TokensMax}");
-        builder.AppendLine($"- Signatures total: {summary.SignaturesTotal}");
-        builder.AppendLine($"- Strong duplicates groups/items: {summary.StrongDuplicatesGroups}/{summary.StrongDuplicatesItems}");
-        builder.AppendLine($"- Strong duplicates max group size: {summary.StrongDuplicatesMaxGroupSize}");
-        builder.AppendLine($"- Duplicate groups/items: {summary.DuplicateGroups}/{summary.DuplicateItems}");
+        var settings = new ScanSettings(top, minGroupSize, minTokens, minLines, previewLines);
+        var builder = new ScanReportBuilder();
+        return builder.BuildReport(files, settings, kindFilter);
     }
 
     private static HashSet<CandidateKind> ParseKinds(string rawKinds)
@@ -477,42 +236,3 @@ internal static class ScanCommand
         }
     }
 }
-
-internal sealed record ScanSummary(
-    int TotalFiles,
-    int ParsedSuccessfully,
-    int ParsedFailed,
-    int ErrorDiagnostics,
-    int CandidatesTotal,
-    int CandidatesMethod,
-    int CandidatesLambda,
-    int CandidatesBlock,
-    int NormalizedTotal,
-    int TokensTotal,
-    double TokensAverage,
-    int TokensMax,
-    int SignaturesTotal,
-    int StrongDuplicatesGroups,
-    int StrongDuplicatesItems,
-    int StrongDuplicatesMaxGroupSize,
-    int DuplicateGroups,
-    int DuplicateItems);
-
-internal sealed record ScanReport(
-    ScanSummary Summary,
-    IReadOnlyList<DuplicateGroupReport> Groups);
-
-internal sealed record DuplicateGroupReport(
-    string Signature,
-    double SimilarityPercent,
-    int GroupSize,
-    int TokenCount,
-    int Impact,
-    IReadOnlyList<DuplicateOccurrenceReport> Occurrences);
-
-internal sealed record DuplicateOccurrenceReport(
-    string Kind,
-    string FilePath,
-    int StartLine,
-    int EndLine,
-    IReadOnlyList<string>? PreviewLines);
