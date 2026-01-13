@@ -20,20 +20,33 @@
             <TextBlock Text="Analizza rapidamente la salute del tuo codice C# da file, cartella o repository GitHub." Foreground="{StaticResource MutedText}" />
         </StackPanel>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,20,*" Margin="0,0,0,16">
+        <Grid Grid.Row="2" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="20" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Background="{StaticResource CardBackground}" CornerRadius="12" Padding="18">
                 <StackPanel>
                     <TextBlock Text="Origine" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock Text="Seleziona una sorgente e avvia la scansione." Foreground="{StaticResource MutedText}" Margin="0,4,0,12" />
 
                     <RadioButton Content="Cartella locale" IsChecked="{Binding IsFolderSource, Mode=TwoWay}" />
-                    <Grid Margin="0,4,0,0" ColumnDefinitions="*,Auto">
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsFolderSource}" />
                         <Button Content="Sfoglia" Style="{StaticResource SecondaryButton}" Command="{Binding BrowseFolderCommand}" IsEnabled="{Binding IsFolderSource}" />
                     </Grid>
 
                     <RadioButton Content="Singolo file" IsChecked="{Binding IsFileSource, Mode=TwoWay}" Margin="0,10,0,0" />
-                    <Grid Margin="0,4,0,0" ColumnDefinitions="*,Auto">
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBox Text="{Binding FilePath, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsFileSource}" />
                         <Button Content="Sfoglia" Style="{StaticResource SecondaryButton}" Command="{Binding BrowseFileCommand}" IsEnabled="{Binding IsFileSource}" />
                     </Grid>
