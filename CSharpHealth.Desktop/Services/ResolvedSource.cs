@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace CSharpHealth.Desktop.Services;
 
 public sealed class ResolvedSource : IDisposable
