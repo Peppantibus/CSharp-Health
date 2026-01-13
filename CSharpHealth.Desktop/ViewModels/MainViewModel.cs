@@ -3,12 +3,11 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Windows.Forms;
 using System.Windows.Input;
 using CSharpHealth.Core.Reporting;
 using CSharpHealth.Core.Scanning;
 using CSharpHealth.Desktop.Services;
-using Microsoft.Win32;
+using Forms = System.Windows.Forms;
 
 namespace CSharpHealth.Desktop.ViewModels;
 
@@ -161,7 +160,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void BrowseFolder()
     {
-        using var dialog = new FolderBrowserDialog
+        using var dialog = new Forms.FolderBrowserDialog
         {
             Description = "Seleziona la cartella da analizzare"
         };
@@ -174,7 +173,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void BrowseFile()
     {
-        var dialog = new OpenFileDialog
+        var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Filter = "C# files (*.cs)|*.cs|All files (*.*)|*.*"
         };
@@ -209,10 +208,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             var settings = new ScanSettings(
                 TopGroups > 0 ? TopGroups : 10,
-                minGroupSize: 2,
-                minTokens: 50,
-                minLines: 6,
-                previewLines: 3);
+                MinGroupSize: 2,
+                MinTokens: 50,
+                MinLines: 6,
+                PreviewLines: 3);
 
             var output = await Task.Run(() => _scanRunner.Run(files, settings, SelectedOutputFormat));
             OutputText = output;
@@ -285,7 +284,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = \"Errore durante il clone del repository.\";
+                    StatusMessage = "Errore durante il clone del repository.";
                     OutputText = ex.Message;
                     return false;
                 }
@@ -322,13 +321,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
-}
-
-public enum OutputFormatOption
-{
-    Text,
-    Markdown,
-    Json
 }
 
 public enum SourceType
