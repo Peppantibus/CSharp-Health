@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSharpHealth.Tests", "CShar
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSharpHealth.Core", "CSharpHealth.Core\CSharpHealth.Core.csproj", "{616497E7-96D9-4D68-8FEB-74EE7B5D4865}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CSharpHealth.Desktop", "CSharpHealth.Desktop\CSharpHealth.Desktop.csproj", "{06190047-5309-4E70-9490-C258A561FB2D}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Elementi di soluzione", "Elementi di soluzione", "{9DF70304-0A22-CE1E-AA12-D5904EE55694}"
 	ProjectSection(SolutionItems) = preProject
 		.gitignore = .gitignore
@@ -33,6 +35,10 @@ Global
 		{616497E7-96D9-4D68-8FEB-74EE7B5D4865}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{616497E7-96D9-4D68-8FEB-74EE7B5D4865}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{616497E7-96D9-4D68-8FEB-74EE7B5D4865}.Release|Any CPU.Build.0 = Release|Any CPU
+		{06190047-5309-4E70-9490-C258A561FB2D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{06190047-5309-4E70-9490-C258A561FB2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{06190047-5309-4E70-9490-C258A561FB2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{06190047-5309-4E70-9490-C258A561FB2D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
